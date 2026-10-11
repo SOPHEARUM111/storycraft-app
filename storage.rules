@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsStory(uid, storyId) {
+      return signedIn()
+        && request.auth.uid == uid
+        && firestore.get(/databases/(default)/documents/stories/$(storyId)).data.userId == uid;
+    }
+
+    // Client uploads only the source video. Generated assets are server-managed.
+    match /users/{uid}/stories/{storyId}/source-video/{fileName} {
+      allow create, update: if ownsStory(uid, storyId)
+        && request.resource.size < 500 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+      allow read, delete: if false;
+    }
+
+    // Private generated files: access them through an authenticated backend flow.
+    match /users/{uid}/stories/{storyId}/{fileName=**} {
+      allow read, write: if false;
+    }
+
+    // Deny all other object paths.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
